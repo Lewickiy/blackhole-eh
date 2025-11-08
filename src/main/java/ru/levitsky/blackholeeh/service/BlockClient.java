@@ -17,12 +17,12 @@ import java.util.Optional;
 public class BlockClient {
 
     private final RestTemplate restTemplate;
-    private final String baseUrl;
+    private final String BASE_URL = "http://localhost:8081";
 
     public Optional<BlockResponse> getBlockByHash(String hash) {
         try {
             ResponseEntity<BlockResponse> response =
-                    restTemplate.getForEntity(baseUrl + "/api/v1/blocks/" + hash, BlockResponse.class);
+                    restTemplate.getForEntity(BASE_URL + "/api/v1/blocks/" + hash, BlockResponse.class);
             return Optional.ofNullable(response.getBody());
         } catch (Exception e) {
             return Optional.empty();
@@ -36,7 +36,7 @@ public class BlockClient {
         HttpEntity<BlockSaveRequest> entity = new HttpEntity<>(request, headers);
 
         ResponseEntity<BlockResponse> response =
-                restTemplate.postForEntity(baseUrl + "/api/v1/blocks", entity, BlockResponse.class);
+                restTemplate.postForEntity(BASE_URL + "/api/v1/blocks", entity, BlockResponse.class);
         return response.getBody();
     }
 }

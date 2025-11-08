@@ -15,6 +15,7 @@ public class ClientConfig {
     @Bean
     public BlockClient blockClient(RestTemplate restTemplate) {
         // URL сервера можно будет вынести в application.properties
-        return new BlockClient(restTemplate, "http://localhost:8081");
+        String BASE_URL = "http://localhost:8081";
+        return new BlockClient(restTemplate, BASE_URL);
     }
 }

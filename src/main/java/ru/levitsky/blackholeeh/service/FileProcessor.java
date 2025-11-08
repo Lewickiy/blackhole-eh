@@ -1,6 +1,7 @@
 package ru.levitsky.blackholeeh.service;
 
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import ru.levitsky.blackholeeh.util.HashUtils;
 
@@ -11,13 +12,14 @@ import java.util.List;
 
 @Service
 @RequiredArgsConstructor
+@Slf4j
 public class FileProcessor {
     private final BlockClient blockClient;
 
     public void processDirectory(String dirPath) throws IOException {
         Path dir = Path.of(dirPath);
         if (!Files.isDirectory(dir)) {
-            System.err.println("❌ " + dir + " is not a directory!");
+            log.error("'{}' is not a directory", dir);
             return;
         }
 
@@ -33,16 +35,16 @@ public class FileProcessor {
     }
 
     private void processFile(Path file) throws Exception {
-        System.out.println("🖼 Processing file: " + file.getFileName());
+        log.info("Processing file: {}", file.getFileName());
         List<byte[]> blocks = BlockSplitter.splitIntoBlocks8x8(file.toFile());
 
         for (byte[] block : blocks) {
             String hash = HashUtils.sha256(block);
             if (blockClient.getBlockByHash(hash).isEmpty()) {
                 blockClient.uploadBlock(hash, block);
-                System.out.println("⬆️ Uploaded block " + hash);
+                log.info("Uploaded block: {}", hash);
             } else {
-                System.out.println("⏩ Block already exists " + hash);
+                log.info("Block already exists: {}", hash);
             }
         }
     }
