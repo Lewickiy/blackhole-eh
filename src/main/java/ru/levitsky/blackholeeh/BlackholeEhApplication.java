@@ -1,6 +1,7 @@
 package ru.levitsky.blackholeeh;
 
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.CommandLineRunner;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
@@ -8,6 +9,7 @@ import ru.levitsky.blackholeeh.service.FileProcessor;
 
 @SpringBootApplication
 @RequiredArgsConstructor
+@Slf4j
 public class BlackholeEhApplication implements CommandLineRunner {
 
 private final FileProcessor fileProcessor;
@@ -19,9 +21,9 @@ private final FileProcessor fileProcessor;
     @Override
     public void run(String... args) throws Exception {
         String directory = args.length > 0 ? args[0] : "target/classes/img";
-        System.out.println("📂 Processing directory: " + directory);
+        log.info("Processing directory: {}", directory);
         fileProcessor.processDirectory(directory);
-        System.out.println("✅ Done");
+        log.info(" Done");
     }
 
 }
