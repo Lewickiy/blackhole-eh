@@ -23,6 +23,6 @@ public class BlackholeEhApplication implements CommandLineRunner {
         String directory = args.length > 0 ? args[0] : "target/classes/img";
         log.info("Processing directory: {}", directory);
         fileProcessor.processDirectory(directory);
-        log.info(" Done");
+        log.info("Done");
     }
 }

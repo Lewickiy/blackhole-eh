@@ -58,13 +58,11 @@ public class FileProcessor {
             return;
         }
 
-        // формируем список на загрузку
         List<BlockDto> toUpload = missing.stream()
                 .map(h -> new BlockDto(h, blockMap.get(h)))
                 .toList();
 
-        // 🔥 ограничиваем размер батча
-        final int batchSize = 1000; // можно вынести в application.properties
+        final int batchSize = 1000;
         for (int i = 0; i < toUpload.size(); i += batchSize) {
             int end = Math.min(i + batchSize, toUpload.size());
             List<BlockDto> batch = toUpload.subList(i, end);
