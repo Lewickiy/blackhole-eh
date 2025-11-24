@@ -4,8 +4,10 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import ru.levitsky.blackholeeh.dto.BlockDto;
+import ru.levitsky.blackholeeh.enumeration.BlockType;
 import ru.levitsky.blackholeeh.util.HashUtils;
 
+import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -13,6 +15,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.stream.Stream;
 
 @Service
 @RequiredArgsConstructor
@@ -21,6 +24,9 @@ public class FileProcessor {
 
     private final BlockClient blockClient;
 
+    /**
+     * Process all JPG/JPEG images in the directory
+     */
     public void processDirectory(String dirPath) throws IOException {
         Path dir = Path.of(dirPath);
         if (!Files.isDirectory(dir)) {
@@ -28,51 +34,74 @@ public class FileProcessor {
             return;
         }
 
-        Files.list(dir)
-                .filter(p -> p.toString().toLowerCase().endsWith(".jpg"))
-                .forEach(p -> {
-                    try {
-                        processFile(p);
-                    } catch (Exception e) {
-                        log.error("Error processing {}: {}", p, e.getMessage());
-                    }
-                });
+        try (Stream<Path> files = Files.list(dir)) {
+            files.filter(p -> p.toString().toLowerCase().endsWith(".jpg") ||
+                            p.toString().toLowerCase().endsWith(".jpeg"))
+                    .forEach(p -> {
+                        try {
+                            processFile(p.toFile());
+                        } catch (Exception e) {
+                            log.error("Error processing {}: {}", p.getFileName(), e.getMessage());
+                        }
+                    });
+        }
     }
 
-    private void processFile(Path file) throws Exception {
-        log.info("Processing file: {}", file.getFileName());
-        List<byte[]> blocks = BlockSplitter.splitIntoBlocks8x8(file.toFile());
+    /**
+     * Split file into RCT blocks, deduplicate and upload missing blocks
+     */
+    private void processFile(File file) throws Exception {
+        log.info("Processing file: {}", file.getName());
 
-        Map<String, byte[]> blockMap = new LinkedHashMap<>();
-        for (byte[] block : blocks) {
-            blockMap.put(HashUtils.sha256(block), block);
+        List<BlockSplitter.RctBlock> blocks = BlockSplitter.splitIntoRctBlocks(file);
+
+        // Deduplicated maps for Y, U, V blocks
+        Map<String, byte[]> yMap = new LinkedHashMap<>();
+        Map<String, byte[]> uMap = new LinkedHashMap<>();
+        Map<String, byte[]> vMap = new LinkedHashMap<>();
+
+        for (BlockSplitter.RctBlock block : blocks) {
+            String yHash = HashUtils.sha256WithLength(block.y());
+            String uHash = HashUtils.sha256WithLength(block.uPacked());
+            String vHash = HashUtils.sha256WithLength(block.vPacked());
+
+            yMap.putIfAbsent(yHash, block.y());
+            uMap.putIfAbsent(uHash, block.uPacked());
+            vMap.putIfAbsent(vHash, block.vPacked());
         }
 
-        List<String> hashes = new ArrayList<>(blockMap.keySet());
-        List<String> missing = blockClient.checkMissingBlocks(hashes);
+        uploadMissingBlocks(yMap, BlockType.LUMA);
+        uploadMissingBlocks(uMap, BlockType.CHROMA_CB);
+        uploadMissingBlocks(vMap, BlockType.CHROMA_CR);
 
-        log.info("Checked {} blocks: {} missing, {} already exist", hashes.size(), missing.size(), hashes.size() - missing.size());
+        log.info("File '{}' processed: {} Y blocks, {} U blocks, {} V blocks (unique)",
+                file.getName(), yMap.size(), uMap.size(), vMap.size());
+    }
 
-        if (missing.isEmpty()) {
-            log.info("File {} skipped - all blocks already exist", file.getFileName());
+    /**
+     * Upload missing blocks to the server
+     */
+    private void uploadMissingBlocks(Map<String, byte[]> blockMap, BlockType type) {
+        if (blockMap.isEmpty()) {
+            log.info("No {} blocks to upload", type);
             return;
         }
 
-        List<BlockDto> toUpload = missing.stream()
-                .map(h -> new BlockDto(h, blockMap.get(h)))
-                .toList();
+        List<String> hashes = new ArrayList<>(blockMap.keySet());
+        List<String> missing = blockClient.checkMissingBlocks(hashes, type);
 
-        final int batchSize = 1000;
-        for (int i = 0; i < toUpload.size(); i += batchSize) {
-            int end = Math.min(i + batchSize, toUpload.size());
-            List<BlockDto> batch = toUpload.subList(i, end);
-
-            blockClient.uploadBlocksBatch(batch);
-            log.info("Uploaded batch {}/{} ({} blocks)",
-                    (i / batchSize) + 1,
-                    (int) Math.ceil((double) toUpload.size() / batchSize),
-                    batch.size());
+        if (missing.isEmpty()) {
+            log.info("All {} blocks already exist, no upload needed", type);
+            return;
         }
-        log.info("File {} processed completely: uploaded {} new blocks", file.getFileName(), missing.size());
+
+        log.info("Uploading {} missing {} blocks…", missing.size(), type);
+
+        List<BlockDto> uploadList = new ArrayList<>(missing.size());
+        for (String h : missing) {
+            uploadList.add(new BlockDto(h, blockMap.get(h), type));
+        }
+
+        blockClient.uploadBlocksBatch(uploadList, type);
     }
 }
