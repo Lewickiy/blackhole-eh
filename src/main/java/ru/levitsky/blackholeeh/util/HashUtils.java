@@ -1,5 +1,6 @@
 package ru.levitsky.blackholeeh.util;
 
+import java.nio.ByteBuffer;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 
@@ -17,4 +18,12 @@ public class HashUtils {
             throw new RuntimeException(e);
         }
     }
+
+    public static String sha256WithLength(byte[] data) {
+        ByteBuffer buffer = ByteBuffer.allocate(4 + data.length);
+        buffer.putInt(data.length);
+        buffer.put(data);
+        return sha256(buffer.array());
+    }
+
 }

@@ -9,6 +9,7 @@ import ru.levitsky.blackholeeh.dto.BlockBatchUploadRequest;
 import ru.levitsky.blackholeeh.dto.BlockCheckRequest;
 import ru.levitsky.blackholeeh.dto.BlockCheckResponse;
 import ru.levitsky.blackholeeh.dto.BlockDto;
+import ru.levitsky.blackholeeh.enumeration.BlockType;
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -19,7 +20,6 @@ import java.util.Objects;
 @Service
 @RequiredArgsConstructor
 public class BlockClient {
-
     private final RestTemplate restTemplate;
 
     private static final String BASE_URL = "http://localhost:8081/api/v1/blocks";
@@ -28,53 +28,44 @@ public class BlockClient {
     /**
      * Проверяет, какие блоки отсутствуют на сервере
      */
-    public List<String> checkMissingBlocks(List<String> hashes) {
-        if (hashes.isEmpty()) {
-            return Collections.emptyList();
-        }
-
+    public List<String> checkMissingBlocks(List<String> hashes, BlockType type) {
+        if (hashes.isEmpty()) return Collections.emptyList();
         try {
+            String url = BASE_URL + "/check?type=" + type.name();
             BlockCheckRequest req = new BlockCheckRequest(hashes);
             ResponseEntity<BlockCheckResponse> resp =
-                    restTemplate.postForEntity(BASE_URL + "/check", req, BlockCheckResponse.class);
+                    restTemplate.postForEntity(url, req, BlockCheckResponse.class);
 
             List<String> missing = Objects.requireNonNull(resp.getBody()).getMissing();
-            int existing = hashes.size() - missing.size();
-            log.info("Checked {} blocks → {} exist, {} missing", hashes.size(), existing, missing.size());
+            log.info("Checked {} {} blocks → {} missing", hashes.size(), type, missing.size());
             return missing;
         } catch (Exception e) {
-            log.error("Error checking missing blocks: {}", e.getMessage());
+            log.error("Error checking missing {} blocks: {}", type, e.getMessage());
             return Collections.emptyList();
         }
     }
 
     /**
-     * Загружает блоки на сервер пакетами, чтобы не превышать лимит параметров
+     * Загружает блоки на сервер пакетами
      */
-    public void uploadBlocksBatch(List<BlockDto> blocks) {
-        if (blocks.isEmpty()) {
-            log.info("No blocks to upload");
-            return;
-        }
+    public void uploadBlocksBatch(List<BlockDto> blocks, BlockType type) {
+        if (blocks.isEmpty()) return;
 
         List<List<BlockDto>> batches = partition(blocks, BATCH_SIZE);
         for (int i = 0; i < batches.size(); i++) {
             List<BlockDto> batch = batches.get(i);
+            String url = BASE_URL + "/upload?type=" + type.name();
             BlockBatchUploadRequest req = new BlockBatchUploadRequest(batch);
 
             try {
-                restTemplate.postForEntity(BASE_URL + "/upload", req, Void.class);
-                log.info("Uploaded batch {}/{} ({} blocks)",
-                        i + 1, batches.size(), batch.size());
+                restTemplate.postForEntity(url, req, Void.class);
+                log.info("Uploaded batch {}/{} of {} blocks", i + 1, batches.size(), type);
             } catch (Exception e) {
                 log.error("Upload failed for batch {}/{}: {}", i + 1, batches.size(), e.getMessage());
             }
         }
     }
 
-    /**
-     * Делит список на подсписки фиксированного размера
-     */
     private static <T> List<List<T>> partition(List<T> list, int size) {
         List<List<T>> parts = new ArrayList<>();
         for (int i = 0; i < list.size(); i += size) {

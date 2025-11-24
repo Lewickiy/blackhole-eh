@@ -2,68 +2,109 @@ package ru.levitsky.blackholeeh.service;
 
 import lombok.extern.slf4j.Slf4j;
 
-import javax.imageio.ImageIO;
+import java.awt.*;
 import java.awt.image.BufferedImage;
 import java.io.File;
+import java.nio.ByteBuffer;
+import java.nio.ByteOrder;
 import java.util.ArrayList;
 import java.util.List;
 
 @Slf4j
 public class BlockSplitter {
 
-    public static List<byte[]> splitIntoBlocks8x8(File file) throws Exception {
-        long startTotal = System.nanoTime();
+    public record RctBlock(byte[] y, byte[] uPacked, byte[] vPacked) {
+    }
 
-        BufferedImage image = ImageIO.read(file);
-        List<byte[]> blocks = new ArrayList<>();
+    /**
+     * Split image into padded 8x8 blocks using reversible integer transform (lossless).
+     */
+    public static List<RctBlock> splitIntoRctBlocks(File file) throws Exception {
+        long startTime = System.nanoTime();
+        BufferedImage image = javax.imageio.ImageIO.read(file);
 
         int width = image.getWidth();
         int height = image.getHeight();
-        int blockCount = 0;
+        int paddedWidth = ((width + 7) / 8) * 8;
+        int paddedHeight = ((height + 7) / 8) * 8;
 
-        long blockTimeTotal = 0;
+        // padded image (fill extra pixels with edge pixels)
+        BufferedImage padded = new BufferedImage(paddedWidth, paddedHeight, BufferedImage.TYPE_INT_RGB);
+        Graphics2D g = padded.createGraphics();
+        g.drawImage(image, 0, 0, null);
+        g.dispose();
 
-        for (int y = 0; y < height; y += 8) {
-            for (int x = 0; x < width; x += 8) {
-                long startBlock = System.nanoTime();
+        List<RctBlock> blocks = new ArrayList<>();
 
-                int blockWidth = Math.min(8, width - x);
-                int blockHeight = Math.min(8, height - y);
+        for (int by = 0; by < paddedHeight; by += 8) {
+            for (int bx = 0; bx < paddedWidth; bx += 8) {
+                byte[] y = new byte[64];            // 8x8
+                short[] uShorts = new short[64];   // 8x8
+                short[] vShorts = new short[64];   // 8x8
 
-                BufferedImage block = image.getSubimage(x, y, blockWidth, blockHeight);
-                byte[] blockBytes = getBytesFromBlock(block);
-                blocks.add(blockBytes);
+                int idx = 0;
+                for (int yoff = 0; yoff < 8; yoff++) {
+                    for (int xoff = 0; xoff < 8; xoff++) {
+                        int rgb = padded.getRGB(bx + xoff, by + yoff);
+                        int r = (rgb >> 16) & 0xFF;
+                        int gVal = (rgb >> 8) & 0xFF;
+                        int b = rgb & 0xFF;
 
-                blockTimeTotal += System.nanoTime() - startBlock;
-                blockCount++;
+                        int Y = (r + 2 * gVal + b) >> 2;
+                        int U = r - gVal;
+                        int V = b - gVal;
+
+                        y[idx] = (byte) (Y & 0xFF);
+                        uShorts[idx] = (short) U;
+                        vShorts[idx] = (short) V;
+                        idx++;
+                    }
+                }
+
+                byte[] uPacked = packShortArrayBE(uShorts);
+                byte[] vPacked = packShortArrayBE(vShorts);
+
+                blocks.add(new RctBlock(y, uPacked, vPacked));
             }
         }
 
-        long totalTime = System.nanoTime() - startTotal;
-        double totalMs = totalTime / 1_000_000.0;
-        double avgBlockMs = (blockCount > 0)
-                ? (blockTimeTotal / 1_000_000.0 / blockCount)
-                : 0;
-
-        log.info("Split '{}' into {} blocks in {} ms (avg {} ms per block)",
-                file.getName(), blockCount, totalMs, avgBlockMs);
-
+        long timeMs = (System.nanoTime() - startTime) / 1_000_000;
+        log.info("File '{}' split into {} RCT blocks in {} ms", file.getName(), blocks.size(), timeMs);
         return blocks;
     }
 
-    private static byte[] getBytesFromBlock(BufferedImage block) {
-        int w = block.getWidth();
-        int h = block.getHeight();
-        byte[] bytes = new byte[w * h * 3]; //RGB
-        int idx = 0;
-        for (int y = 0; y < h; y++) {
-            for (int x = 0; x < w; x++) {
-                int rgb = block.getRGB(x, y);
-                bytes[idx++] = (byte) ((rgb >> 16) & 0xFF);
-                bytes[idx++] = (byte) ((rgb >> 8) & 0xFF);
-                bytes[idx++] = (byte) (rgb & 0xFF);
-            }
+    public static byte[] reconstructRgb(RctBlock block) {
+        byte[] y = block.y();
+        short[] u = unpackShortArrayBE(block.uPacked());
+        short[] v = unpackShortArrayBE(block.vPacked());
+
+        byte[] rgb = new byte[64 * 3];
+        for (int i = 0, ri = 0; i < 64; i++) {
+            int Y = y[i] & 0xFF;
+            int U = u[i];
+            int V = v[i];
+
+            int G = Y - ((U + V) >> 2);
+            int R = U + G;
+            int B = V + G;
+
+            rgb[ri++] = (byte) (R & 0xFF);
+            rgb[ri++] = (byte) (G & 0xFF);
+            rgb[ri++] = (byte) (B & 0xFF);
         }
-        return bytes;
+        return rgb;
+    }
+
+    private static byte[] packShortArrayBE(short[] arr) {
+        ByteBuffer buf = ByteBuffer.allocate(arr.length * 2).order(ByteOrder.BIG_ENDIAN);
+        for (short s : arr) buf.putShort(s);
+        return buf.array();
+    }
+
+    private static short[] unpackShortArrayBE(byte[] packed) {
+        short[] arr = new short[packed.length / 2];
+        ByteBuffer buf = ByteBuffer.wrap(packed).order(ByteOrder.BIG_ENDIAN);
+        for (int i = 0; i < arr.length; i++) arr[i] = buf.getShort();
+        return arr;
     }
 }
