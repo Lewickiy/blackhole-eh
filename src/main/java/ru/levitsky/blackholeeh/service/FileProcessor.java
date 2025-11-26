@@ -5,7 +5,6 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import ru.levitsky.blackholeeh.dto.BlockDto;
 import ru.levitsky.blackholeeh.enumeration.BlockType;
-import ru.levitsky.blackholeeh.util.HashUtils;
 
 import java.io.File;
 import java.io.IOException;
@@ -23,6 +22,7 @@ import java.util.stream.Stream;
 public class FileProcessor {
 
     private final BlockClient blockClient;
+    private final BlhoWriter blhoWriter;
 
     /**
      * Process all JPG/JPEG images in the directory
@@ -48,22 +48,23 @@ public class FileProcessor {
     }
 
     /**
-     * Split file into RCT blocks, deduplicate and upload missing blocks
+     * Process single file: create .blho and upload missing blocks
      */
     private void processFile(File file) throws Exception {
         log.info("Processing file: {}", file.getName());
 
         List<BlockSplitter.RctBlock> blocks = BlockSplitter.splitIntoRctBlocks(file);
+        blhoWriter.writeBlho(file, blocks);
 
-        // Deduplicated maps for Y, U, V blocks
+        // Дублируем блоки
         Map<String, byte[]> yMap = new LinkedHashMap<>();
         Map<String, byte[]> uMap = new LinkedHashMap<>();
         Map<String, byte[]> vMap = new LinkedHashMap<>();
 
         for (BlockSplitter.RctBlock block : blocks) {
-            String yHash = HashUtils.sha256WithLength(block.y());
-            String uHash = HashUtils.sha256WithLength(block.uPacked());
-            String vHash = HashUtils.sha256WithLength(block.vPacked());
+            String yHash = ru.levitsky.blackholeeh.util.HashUtils.sha256WithLength(block.y());
+            String uHash = ru.levitsky.blackholeeh.util.HashUtils.sha256WithLength(block.uPacked());
+            String vHash = ru.levitsky.blackholeeh.util.HashUtils.sha256WithLength(block.vPacked());
 
             yMap.putIfAbsent(yHash, block.y());
             uMap.putIfAbsent(uHash, block.uPacked());

@@ -1,6 +1,10 @@
 package ru.levitsky.blackholeeh.service;
 
 import lombok.extern.slf4j.Slf4j;
+import ru.levitsky.blackholeeh.util.image.component.RctComponents;
+import ru.levitsky.blackholeeh.util.image.RctTransformUtils;
+import ru.levitsky.blackholeeh.util.image.component.RgbComponents;
+import ru.levitsky.blackholeeh.util.image.RgbExtractorUtils;
 
 import java.awt.*;
 import java.awt.image.BufferedImage;
@@ -45,18 +49,12 @@ public class BlockSplitter {
                 int idx = 0;
                 for (int yoff = 0; yoff < 8; yoff++) {
                     for (int xoff = 0; xoff < 8; xoff++) {
-                        int rgb = padded.getRGB(bx + xoff, by + yoff);
-                        int r = (rgb >> 16) & 0xFF;
-                        int gVal = (rgb >> 8) & 0xFF;
-                        int b = rgb & 0xFF;
+                        RgbComponents rgb = RgbExtractorUtils.extractRgbFromPixel(padded, bx, by, xoff, yoff);
+                        RctComponents rct = RctTransformUtils.forwardRctTransform(rgb.red(), rgb.green(), rgb.blue());
 
-                        int Y = (r + 2 * gVal + b) >> 2;
-                        int U = r - gVal;
-                        int V = b - gVal;
-
-                        y[idx] = (byte) (Y & 0xFF);
-                        uShorts[idx] = (short) U;
-                        vShorts[idx] = (short) V;
+                        y[idx] = (byte) (rct.y() & 0xFF);
+                        uShorts[idx] = (short) rct.u();
+                        vShorts[idx] = (short) rct.v();
                         idx++;
                     }
                 }
@@ -73,38 +71,9 @@ public class BlockSplitter {
         return blocks;
     }
 
-    public static byte[] reconstructRgb(RctBlock block) {
-        byte[] y = block.y();
-        short[] u = unpackShortArrayBE(block.uPacked());
-        short[] v = unpackShortArrayBE(block.vPacked());
-
-        byte[] rgb = new byte[64 * 3];
-        for (int i = 0, ri = 0; i < 64; i++) {
-            int Y = y[i] & 0xFF;
-            int U = u[i];
-            int V = v[i];
-
-            int G = Y - ((U + V) >> 2);
-            int R = U + G;
-            int B = V + G;
-
-            rgb[ri++] = (byte) (R & 0xFF);
-            rgb[ri++] = (byte) (G & 0xFF);
-            rgb[ri++] = (byte) (B & 0xFF);
-        }
-        return rgb;
-    }
-
     private static byte[] packShortArrayBE(short[] arr) {
         ByteBuffer buf = ByteBuffer.allocate(arr.length * 2).order(ByteOrder.BIG_ENDIAN);
         for (short s : arr) buf.putShort(s);
         return buf.array();
-    }
-
-    private static short[] unpackShortArrayBE(byte[] packed) {
-        short[] arr = new short[packed.length / 2];
-        ByteBuffer buf = ByteBuffer.wrap(packed).order(ByteOrder.BIG_ENDIAN);
-        for (int i = 0; i < arr.length; i++) arr[i] = buf.getShort();
-        return arr;
     }
 }
