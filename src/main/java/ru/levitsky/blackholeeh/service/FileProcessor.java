@@ -5,6 +5,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import ru.levitsky.blackholeeh.dto.BlockDto;
 import ru.levitsky.blackholeeh.enumeration.BlockType;
+import ru.levitsky.blackholeeh.util.BlockDtoValidator;
 
 import java.io.File;
 import java.io.IOException;
@@ -15,6 +16,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Stream;
+
 
 @Service
 @RequiredArgsConstructor
@@ -100,7 +102,16 @@ public class FileProcessor {
 
         List<BlockDto> uploadList = new ArrayList<>(missing.size());
         for (String h : missing) {
-            uploadList.add(new BlockDto(h, blockMap.get(h), type));
+            BlockDto blockDto = new BlockDto(h, blockMap.get(h), type);
+
+            try {
+                BlockDtoValidator.validate(blockDto);
+            } catch (IllegalArgumentException e) {
+                log.error("Validation failed for block {}: {}", h, e.getMessage());
+                continue;
+            }
+
+            uploadList.add(blockDto);
         }
 
         blockClient.uploadBlocksBatch(uploadList, type);
