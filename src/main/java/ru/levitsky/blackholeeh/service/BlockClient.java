@@ -16,14 +16,14 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Objects;
 
+import static ru.levitsky.blackholeeh.constants.ProjectConstants.BASE_URL;
+import static ru.levitsky.blackholeeh.constants.ProjectConstants.BATCH_SIZE;
+
 @Slf4j
 @Service
 @RequiredArgsConstructor
 public class BlockClient {
     private final RestTemplate restTemplate;
-
-    private static final String BASE_URL = "http://localhost:8081/api/v1/blocks";
-    private static final int BATCH_SIZE = 1000;
 
     /**
      * Checks which blocks from the provided list are missing on the server.
