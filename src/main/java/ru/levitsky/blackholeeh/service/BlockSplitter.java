@@ -42,7 +42,7 @@ public class BlockSplitter {
 
         for (int by = 0; by < paddedHeight; by += 8) {
             for (int bx = 0; bx < paddedWidth; bx += 8) {
-                byte[] y = new byte[64];            // 8x8
+                byte[] y = new byte[64];           // 8x8
                 short[] uShorts = new short[64];   // 8x8
                 short[] vShorts = new short[64];   // 8x8
 
