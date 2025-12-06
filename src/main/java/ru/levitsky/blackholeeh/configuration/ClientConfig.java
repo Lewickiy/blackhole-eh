@@ -3,6 +3,7 @@ package ru.levitsky.blackholeeh.configuration;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.web.client.RestTemplate;
+import ru.levitsky.blackholeeh.service.BlhoWriter;
 import ru.levitsky.blackholeeh.service.BlockClient;
 
 @Configuration
@@ -15,5 +16,10 @@ public class ClientConfig {
     @Bean
     public BlockClient blockClient(RestTemplate restTemplate) {
         return new BlockClient(restTemplate);
+    }
+
+    @Bean
+    public BlhoWriter blhoWriter() {
+        return new BlhoWriter();
     }
 }
