@@ -32,19 +32,15 @@ public class BlhoWriter {
     public void writeBlho(File imageFile, List<BlockSplitter.RctBlock> blocks) throws Exception {
         long startTime = System.nanoTime();
 
-        // Получаем размеры оригинального изображения
         BufferedImage image = javax.imageio.ImageIO.read(imageFile);
         int width = image.getWidth();
         int height = image.getHeight();
 
-        // Дублируем блоки и создаем карту позиций
         BlhoFileData fileData = deduplicateAndCreateStructure(blocks, imageFile.getName(), width, height);
 
-        // Формируем имя выходного файла
         String outputPath = imageFile.getAbsolutePath() + ".blho";
         File outputFile = new File(outputPath);
 
-        // Записываем .blho файл
         writeBlhoFile(outputFile, fileData);
 
         long timeMs = (System.nanoTime() - startTime) / 1_000_000;
@@ -93,17 +89,14 @@ public class BlhoWriter {
         List<Integer> positionMap = new ArrayList<>();
 
         for (BlockSplitter.RctBlock block : blocks) {
-            // Создаем уникальный хеш для всего блока (Y+U+V)
             String blockHash = computeBlockHash(block);
 
-            // Если блок новый, добавляем его в уникальные
             if (!uniqueBlocksMap.containsKey(blockHash)) {
                 int index = uniqueBlocksMap.size();
                 uniqueBlocksMap.put(blockHash, block);
                 blockIndexMap.put(blockHash, index);
             }
 
-            // Добавляем индекс в карту позиций
             positionMap.add(blockIndexMap.get(blockHash));
         }
 
@@ -150,16 +143,9 @@ public class BlhoWriter {
         try (DataOutputStream dos = new DataOutputStream(new BufferedOutputStream(
                 Files.newOutputStream(outputFile.toPath())))) {
 
-            // 1. Header
             writeHeader(dos);
-
-            // 2. Metadata
             writeMetadata(dos, fileData);
-
-            // 3. Unique Blocks
             writeUniqueBlocks(dos, fileData.getUniqueBlocks());
-
-            // 4. Position Map
             writePositionMap(dos, fileData.getPositionMap());
         }
     }

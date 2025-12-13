@@ -52,4 +52,5 @@ public class BlockDto {
      */
     @NotNull(message = "Block type must not be null")
     private BlockType type;
+
 }
