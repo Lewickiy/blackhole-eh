@@ -1,10 +1,11 @@
 package ru.levitsky.blackholeeh.service;
 
 import lombok.extern.slf4j.Slf4j;
-import ru.levitsky.blackholeeh.util.image.component.RctComponents;
+import ru.levitsky.blackholeeh.model.RctBlock;
 import ru.levitsky.blackholeeh.util.image.RctTransformUtils;
-import ru.levitsky.blackholeeh.util.image.component.RgbComponents;
 import ru.levitsky.blackholeeh.util.image.RgbExtractorUtils;
+import ru.levitsky.blackholeeh.util.image.component.RctComponents;
+import ru.levitsky.blackholeeh.util.image.component.RgbComponents;
 
 import java.awt.*;
 import java.awt.image.BufferedImage;
@@ -16,9 +17,6 @@ import java.util.List;
 
 @Slf4j
 public class BlockSplitter {
-
-    public record RctBlock(byte[] y, byte[] uPacked, byte[] vPacked) {
-    }
 
     /**
      * Split image into padded 8x8 blocks using reversible integer transform (lossless).
