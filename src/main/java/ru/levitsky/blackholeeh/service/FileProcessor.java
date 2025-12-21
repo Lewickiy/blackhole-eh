@@ -5,6 +5,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import ru.levitsky.blackholeeh.dto.BlockDto;
 import ru.levitsky.blackholeeh.enumeration.BlockType;
+import ru.levitsky.blackholeeh.model.RctBlock;
 import ru.levitsky.blackholeeh.util.BlockDtoValidator;
 import ru.levitsky.blackholeeh.util.HashUtils;
 
@@ -56,14 +57,14 @@ public class FileProcessor {
     private void processFile(File file) throws Exception {
         log.info("Processing file: {}", file.getName());
 
-        List<BlockSplitter.RctBlock> blocks = BlockSplitter.splitIntoRctBlocks(file);
+        List<RctBlock> blocks = BlockSplitter.splitIntoRctBlocks(file);
         blhoWriter.writeBlho(file, blocks);
 
         Map<String, byte[]> yMap = new LinkedHashMap<>();
         Map<String, byte[]> uMap = new LinkedHashMap<>();
         Map<String, byte[]> vMap = new LinkedHashMap<>();
 
-        for (BlockSplitter.RctBlock block : blocks) {
+        for (RctBlock block : blocks) {
             String yHash = HashUtils.sha256WithLength(block.y());
             String uHash = HashUtils.sha256WithLength(block.uPacked());
             String vHash = HashUtils.sha256WithLength(block.vPacked());

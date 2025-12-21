@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
+import ru.levitsky.blackholeeh.model.RctBlock;
 import ru.levitsky.blackholeeh.util.HashUtils;
 
 import java.awt.image.BufferedImage;
@@ -29,7 +30,7 @@ public class BlhoWriter {
     /**
      * Записывает .blho файл для указанного изображения
      */
-    public void writeBlho(File imageFile, List<BlockSplitter.RctBlock> blocks) throws Exception {
+    public void writeBlho(File imageFile, List<RctBlock> blocks) throws Exception {
         long startTime = System.nanoTime();
 
         BufferedImage image = javax.imageio.ImageIO.read(imageFile);
@@ -63,11 +64,11 @@ public class BlhoWriter {
         private final int width;
         private final int height;
         private final int totalBlocks;
-        private final List<BlockSplitter.RctBlock> uniqueBlocks;
+        private final List<RctBlock> uniqueBlocks;
         private final List<Integer> positionMap;
 
         public BlhoFileData(String originalFileName, int width, int height,
-                            List<BlockSplitter.RctBlock> uniqueBlocks,
+                            List<RctBlock> uniqueBlocks,
                             List<Integer> positionMap) {
             this.originalFileName = originalFileName;
             this.width = width;
@@ -82,13 +83,13 @@ public class BlhoWriter {
     /**
      * Дублирует блоки и создает структуру данных для файла
      */
-    private BlhoFileData deduplicateAndCreateStructure(List<BlockSplitter.RctBlock> blocks,
+    private BlhoFileData deduplicateAndCreateStructure(List<RctBlock> blocks,
                                                        String fileName, int width, int height) {
-        Map<String, BlockSplitter.RctBlock> uniqueBlocksMap = new LinkedHashMap<>();
+        Map<String, RctBlock> uniqueBlocksMap = new LinkedHashMap<>();
         Map<String, Integer> blockIndexMap = new HashMap<>();
         List<Integer> positionMap = new ArrayList<>();
 
-        for (BlockSplitter.RctBlock block : blocks) {
+        for (RctBlock block : blocks) {
             String blockHash = computeBlockHash(block);
 
             if (!uniqueBlocksMap.containsKey(blockHash)) {
@@ -110,7 +111,7 @@ public class BlhoWriter {
     /**
      * Вычисляет хеш для всего блока (Y+U+V)
      */
-    private String computeBlockHash(BlockSplitter.RctBlock block) {
+    private String computeBlockHash(RctBlock block) {
         byte[] combined = concatenateArrays(
                 block.y(),
                 block.uPacked(),
@@ -184,11 +185,11 @@ public class BlhoWriter {
     /**
      * Записывает уникальные блоки
      */
-    private void writeUniqueBlocks(DataOutputStream dos, List<BlockSplitter.RctBlock> uniqueBlocks) throws IOException {
+    private void writeUniqueBlocks(DataOutputStream dos, List<RctBlock> uniqueBlocks) throws IOException {
         // 4 bytes unique_blocks_count
         dos.writeInt(uniqueBlocks.size());
 
-        for (BlockSplitter.RctBlock block : uniqueBlocks) {
+        for (RctBlock block : uniqueBlocks) {
             // Y component
             writeByteArrayWithLength(dos, block.y());
 
