@@ -16,6 +16,7 @@ import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -31,123 +32,141 @@ public class BlhoWriter {
      * Записывает .blho файл для указанного изображения
      */
     public void writeBlho(File imageFile, List<RctBlock> blocks) throws Exception {
-        long startTime = System.nanoTime();
-
         BufferedImage image = javax.imageio.ImageIO.read(imageFile);
         int width = image.getWidth();
         int height = image.getHeight();
 
-        BlhoFileData fileData = deduplicateAndCreateStructure(blocks, imageFile.getName(), width, height);
+        BlhoFileDataV2 fileData =
+                createHashStructure(blocks, imageFile, width, height);
 
         String outputPath = imageFile.getAbsolutePath() + ".blho";
         File outputFile = new File(outputPath);
 
         writeBlhoFile(outputFile, fileData);
 
-        long timeMs = (System.nanoTime() - startTime) / 1_000_000;
-        long outputSize = outputFile.length();
-
-        log.info("Created .blho file: {} ({} blocks -> {} unique, {} bytes, {} ms)",
-                outputFile.getName(),
-                fileData.getTotalBlocks(),
-                fileData.getUniqueBlocks().size(),
-                outputSize,
-                timeMs);
+        log.info("""
+                        BLHO v2 written:
+                          total blocks: {}
+                          unique Y: {}
+                          unique U: {}
+                          unique V: {}
+                          size: {} KB
+                        """,
+                fileData.totalBlocks(),
+                fileData.getUniqueYHashes().size(),
+                fileData.getUniqueUHashes().size(),
+                fileData.getUniqueVHashes().size(),
+                outputFile.length() / 1024
+        );
     }
 
     /**
      * Структура для хранения данных .blho файла
      */
     @Getter
-    private static class BlhoFileData {
-        private final String originalFileName;
-        private final int width;
-        private final int height;
-        private final int totalBlocks;
-        private final List<RctBlock> uniqueBlocks;
-        private final List<Integer> positionMap;
+    private static class BlhoFileDataV2 {
 
-        public BlhoFileData(String originalFileName, int width, int height,
-                            List<RctBlock> uniqueBlocks,
-                            List<Integer> positionMap) {
-            this.originalFileName = originalFileName;
-            this.width = width;
-            this.height = height;
-            this.totalBlocks = positionMap.size();
-            this.uniqueBlocks = uniqueBlocks;
-            this.positionMap = positionMap;
+        String originalFileName;
+        int width;
+        int height;
+
+        List<byte[]> uniqueYHashes;
+        List<byte[]> uniqueUHashes;
+        List<byte[]> uniqueVHashes;
+
+        List<Integer> yPositionMap;
+        List<Integer> uPositionMap;
+        List<Integer> vPositionMap;
+
+        int totalBlocks() {
+            return yPositionMap.size();
         }
-
     }
+
 
     /**
      * Дублирует блоки и создает структуру данных для файла
      */
-    private BlhoFileData deduplicateAndCreateStructure(List<RctBlock> blocks,
-                                                       String fileName, int width, int height) {
-        Map<String, RctBlock> uniqueBlocksMap = new LinkedHashMap<>();
-        Map<String, Integer> blockIndexMap = new HashMap<>();
-        List<Integer> positionMap = new ArrayList<>();
+    private BlhoFileDataV2 createHashStructure(
+            List<RctBlock> blocks,
+            File imageFile,
+            int width,
+            int height
+    ) {
+        Map<ByteBuffer, Integer> yIndex = new LinkedHashMap<>();
+        Map<ByteBuffer, Integer> uIndex = new LinkedHashMap<>();
+        Map<ByteBuffer, Integer> vIndex = new LinkedHashMap<>();
+
+        List<byte[]> uniqueY = new ArrayList<>();
+        List<byte[]> uniqueU = new ArrayList<>();
+        List<byte[]> uniqueV = new ArrayList<>();
+
+        List<Integer> yPos = new ArrayList<>();
+        List<Integer> uPos = new ArrayList<>();
+        List<Integer> vPos = new ArrayList<>();
 
         for (RctBlock block : blocks) {
-            String blockHash = computeBlockHash(block);
+            byte[] yHash = HashUtils.sha256Bytes(block.y());
+            byte[] uHash = HashUtils.sha256Bytes(block.uPacked());
+            byte[] vHash = HashUtils.sha256Bytes(block.vPacked());
 
-            if (!uniqueBlocksMap.containsKey(blockHash)) {
-                int index = uniqueBlocksMap.size();
-                uniqueBlocksMap.put(blockHash, block);
-                blockIndexMap.put(blockHash, index);
-            }
+            int yIdx = yIndex.computeIfAbsent(
+                    ByteBuffer.wrap(Arrays.copyOf(yHash, yHash.length)).asReadOnlyBuffer(),
+                    _ -> {
+                        uniqueY.add(yHash);
+                        return uniqueY.size() - 1;
+                    });
 
-            positionMap.add(blockIndexMap.get(blockHash));
+            int uIdx = uIndex.computeIfAbsent(
+                    ByteBuffer.wrap(Arrays.copyOf(uHash, uHash.length)).asReadOnlyBuffer(),
+                    _ -> {
+                        uniqueU.add(uHash);
+                        return uniqueU.size() - 1;
+                    });
+
+            int vIdx = vIndex.computeIfAbsent(
+                    ByteBuffer.wrap(Arrays.copyOf(vHash, vHash.length)).asReadOnlyBuffer(),
+                    _ -> {
+                        uniqueV.add(vHash);
+                        return uniqueV.size() - 1;
+                    });
+
+            yPos.add(yIdx);
+            uPos.add(uIdx);
+            vPos.add(vIdx);
         }
 
-        return new BlhoFileData(
-                fileName, width, height,
-                new ArrayList<>(uniqueBlocksMap.values()),
-                positionMap
-        );
-    }
+        BlhoFileDataV2 data = new BlhoFileDataV2();
+        data.originalFileName = imageFile.getName();
+        data.width = width;
+        data.height = height;
+        data.uniqueYHashes = uniqueY;
+        data.uniqueUHashes = uniqueU;
+        data.uniqueVHashes = uniqueV;
+        data.yPositionMap = yPos;
+        data.uPositionMap = uPos;
+        data.vPositionMap = vPos;
 
-    /**
-     * Вычисляет хеш для всего блока (Y+U+V)
-     */
-    private String computeBlockHash(RctBlock block) {
-        byte[] combined = concatenateArrays(
-                block.y(),
-                block.uPacked(),
-                block.vPacked()
-        );
-        return HashUtils.sha256WithLength(combined);
-    }
-
-    /**
-     * Объединяет несколько массивов байтов в один
-     */
-    private byte[] concatenateArrays(byte[]... arrays) {
-        int totalLength = 0;
-        for (byte[] array : arrays) {
-            totalLength += array.length;
-        }
-
-        ByteBuffer buffer = ByteBuffer.allocate(totalLength);
-        for (byte[] array : arrays) {
-            buffer.put(array);
-        }
-
-        return buffer.array();
+        return data;
     }
 
     /**
      * Записывает .blho файл в бинарном формате
      */
-    private void writeBlhoFile(File outputFile, BlhoFileData fileData) throws Exception {
+    private void writeBlhoFile(File outputFile, BlhoFileDataV2 fileData) throws Exception {
         try (DataOutputStream dos = new DataOutputStream(new BufferedOutputStream(
                 Files.newOutputStream(outputFile.toPath())))) {
 
             writeHeader(dos);
             writeMetadata(dos, fileData);
-            writeUniqueBlocks(dos, fileData.getUniqueBlocks());
-            writePositionMap(dos, fileData.getPositionMap());
+
+            writeHashList(dos, fileData.getUniqueYHashes());
+            writeHashList(dos, fileData.getUniqueUHashes());
+            writeHashList(dos, fileData.getUniqueVHashes());
+
+            writePositionMap(dos, fileData.getYPositionMap());
+            writePositionMap(dos, fileData.getUPositionMap());
+            writePositionMap(dos, fileData.getVPositionMap());
         }
     }
 
@@ -155,23 +174,24 @@ public class BlhoWriter {
      * Записывает заголовок файла
      */
     private void writeHeader(DataOutputStream dos) throws IOException {
-        dos.write("BLHO".getBytes(StandardCharsets.UTF_8));
-        dos.writeByte(1);
+        dos.write("BLHO".getBytes(StandardCharsets.US_ASCII));
+        dos.writeByte(2);
     }
 
     /**
      * Записывает метаданные в формате JSON
      */
-    private void writeMetadata(DataOutputStream dos, BlhoFileData fileData) throws IOException {
+    private void writeMetadata(DataOutputStream dos, BlhoFileDataV2 fileData) throws IOException {
         Map<String, Object> metadata = new HashMap<>();
         metadata.put("format", "BLHO");
-        metadata.put("version", "1.0");
+        metadata.put("version", "2.0");
         metadata.put("file", fileData.getOriginalFileName());
         metadata.put("width", fileData.getWidth());
         metadata.put("height", fileData.getHeight());
-        metadata.put("block_size", 8);
-        metadata.put("total_blocks", fileData.getTotalBlocks());
-        metadata.put("unique_blocks", fileData.getUniqueBlocks().size());
+        metadata.put("total_blocks", fileData.totalBlocks());
+        metadata.put("unique_y_blocks", fileData.getUniqueYHashes().size());
+        metadata.put("unique_u_blocks", fileData.getUniqueUHashes().size());
+        metadata.put("unique_v_blocks", fileData.getUniqueVHashes().size());
 
         String json = objectMapper.writeValueAsString(metadata);
         byte[] jsonBytes = json.getBytes(StandardCharsets.UTF_8);
@@ -182,45 +202,24 @@ public class BlhoWriter {
         dos.write(jsonBytes);
     }
 
-    /**
-     * Записывает уникальные блоки
-     */
-    private void writeUniqueBlocks(DataOutputStream dos, List<RctBlock> uniqueBlocks) throws IOException {
-        // 4 bytes unique_blocks_count
-        dos.writeInt(uniqueBlocks.size());
+    private void writeHashList(DataOutputStream dos, List<byte[]> hashes)
+            throws IOException {
 
-        for (RctBlock block : uniqueBlocks) {
-            // Y component
-            writeByteArrayWithLength(dos, block.y());
-
-            // U component (packed)
-            writeByteArrayWithLength(dos, block.uPacked());
-
-            // V component (packed)
-            writeByteArrayWithLength(dos, block.vPacked());
+        dos.writeInt(hashes.size());
+        for (byte[] hash : hashes) {
+            if (hash.length != 32) {
+                throw new IllegalStateException("Invalid SHA-256 hash");
+            }
+            dos.write(hash);
         }
     }
 
-    /**
-     * Записывает массив байтов с предварительной длиной (2 байта)
-     */
-    private void writeByteArrayWithLength(DataOutputStream dos, byte[] data) throws IOException {
-        // 2 bytes length
-        dos.writeShort(data.length);
-        // N bytes data
-        dos.write(data);
-    }
+    private void writePositionMap(DataOutputStream dos, List<Integer> map)
+            throws IOException {
 
-    /**
-     * Записывает карту позиций
-     */
-    private void writePositionMap(DataOutputStream dos, List<Integer> positionMap) throws IOException {
-        // 4 bytes total_positions
-        dos.writeInt(positionMap.size());
-
-        for (Integer index : positionMap) {
-            // 4 bytes unique_block_index
-            dos.writeInt(index);
+        dos.writeInt(map.size());
+        for (int idx : map) {
+            dos.writeInt(idx);
         }
     }
 }
