@@ -26,4 +26,12 @@ public class HashUtils {
         return sha256(buffer.array());
     }
 
+    public static byte[] sha256Bytes(byte[] data) {
+        try {
+            MessageDigest digest = MessageDigest.getInstance("SHA-256");
+            return digest.digest(data);
+        } catch (NoSuchAlgorithmException e) {
+            throw new RuntimeException(e);
+        }
+    }
 }
