@@ -1,9 +1,9 @@
 package ru.levitsky.blackholeeh.service;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
+import ru.levitsky.blackholeeh.model.BlhoFileDataV2;
 import ru.levitsky.blackholeeh.model.RctBlock;
 import ru.levitsky.blackholeeh.util.HashUtils;
 
@@ -29,7 +29,19 @@ public class BlhoWriter {
     private final ObjectMapper objectMapper = new ObjectMapper();
 
     /**
-     * Записывает .blho файл для указанного изображения
+     * Creates and writes a .blho file for the specified image.<br>
+     * The BLHO format stores only SHA-256 hashes of Y/U/V blocks and position maps,
+     * which significantly reduces the file size compared to the original image,
+     * while preserving the ability to fully restore the original image (lossless).<br>
+     * Execution process:<br>
+     * - Reads the image into a BufferedImage<br>
+     * - Creates a block structure with hashes (Y, U, V) and position maps<br>
+     * - Writes the .blho file in binary format with header, metadata, hashes, and position maps<br>
+     * - Logs statistics: total number of blocks, unique blocks per component, and file size<br>
+     *
+     * @param imageFile the source JPG/JPEG image file
+     * @param blocks    the list of RCT blocks extracted from the image
+     * @throws Exception if an error occurs while reading the image, creating the structure, or writing the file
      */
     public void writeBlho(File imageFile, List<RctBlock> blocks) throws Exception {
         BufferedImage image = javax.imageio.ImageIO.read(imageFile);
@@ -61,38 +73,9 @@ public class BlhoWriter {
     }
 
     /**
-     * Структура для хранения данных .blho файла
-     */
-    @Getter
-    private static class BlhoFileDataV2 {
-
-        String originalFileName;
-        int width;
-        int height;
-
-        List<byte[]> uniqueYHashes;
-        List<byte[]> uniqueUHashes;
-        List<byte[]> uniqueVHashes;
-
-        List<Integer> yPositionMap;
-        List<Integer> uPositionMap;
-        List<Integer> vPositionMap;
-
-        int totalBlocks() {
-            return yPositionMap.size();
-        }
-    }
-
-
-    /**
      * Дублирует блоки и создает структуру данных для файла
      */
-    private BlhoFileDataV2 createHashStructure(
-            List<RctBlock> blocks,
-            File imageFile,
-            int width,
-            int height
-    ) {
+    private BlhoFileDataV2 createHashStructure(List<RctBlock> blocks, File imageFile, int width, int height) {
         Map<ByteBuffer, Integer> yIndex = new LinkedHashMap<>();
         Map<ByteBuffer, Integer> uIndex = new LinkedHashMap<>();
         Map<ByteBuffer, Integer> vIndex = new LinkedHashMap<>();
@@ -136,22 +119,29 @@ public class BlhoWriter {
             vPos.add(vIdx);
         }
 
-        BlhoFileDataV2 data = new BlhoFileDataV2();
-        data.originalFileName = imageFile.getName();
-        data.width = width;
-        data.height = height;
-        data.uniqueYHashes = uniqueY;
-        data.uniqueUHashes = uniqueU;
-        data.uniqueVHashes = uniqueV;
-        data.yPositionMap = yPos;
-        data.uPositionMap = uPos;
-        data.vPositionMap = vPos;
-
-        return data;
+        return new BlhoFileDataV2(imageFile.getName(), width, height, uniqueY, uniqueU, uniqueV, yPos, uPos, vPos);
     }
 
     /**
-     * Записывает .blho файл в бинарном формате
+     * Writes a complete .blho file in binary format.
+     * <p>
+     * The method writes the file sequentially in the following order:
+     * <ol>
+     *   <li>File header (format identifier and version)</li>
+     *   <li>Metadata block encoded as JSON</li>
+     *   <li>Lists of unique SHA-256 hashes for Y, U, and V blocks</li>
+     *   <li>Position maps for Y, U, and V blocks</li>
+     * </ol>
+     * <p>
+     * This structure allows the original image to be reconstructed in a fully
+     * lossless manner by combining the position maps with externally stored
+     * block data.
+     *
+     * @param outputFile the target .blho file to be written
+     * @param fileData   the structured BLHO data containing metadata, hashes,
+     *                   and position maps
+     * @throws Exception if an error occurs while creating the output stream
+     *                   or writing any part of the file
      */
     private void writeBlhoFile(File outputFile, BlhoFileDataV2 fileData) throws Exception {
         try (DataOutputStream dos = new DataOutputStream(new BufferedOutputStream(
@@ -171,7 +161,13 @@ public class BlhoWriter {
     }
 
     /**
-     * Записывает заголовок файла
+     * Writes the header of the .blho file in binary format.<br>
+     * The header consists of:<br>
+     * - 4 ASCII bytes representing the string "BLHO"<br>
+     * - 1 byte for the file format version (currently 2)<br>
+     *
+     * @param dos {@link DataOutputStream}the output stream to write the binary .blho data
+     * @throws IOException if an error occurs while writing to the stream
      */
     private void writeHeader(DataOutputStream dos) throws IOException {
         dos.write("BLHO".getBytes(StandardCharsets.US_ASCII));
@@ -179,7 +175,16 @@ public class BlhoWriter {
     }
 
     /**
-     * Записывает метаданные в формате JSON
+     * Writes the metadata of the .blho file in binary format.<br>
+     * Metadata includes information about the format, version, original file name,
+     * image dimensions, total number of blocks, and counts of unique blocks
+     * for each component (Y, U, V).<br>
+     * The metadata is serialized as JSON and written with a 4-byte integer
+     * prefix indicating the length of the JSON.
+     *
+     * @param dos      the output stream to write the binary .blho data
+     * @param fileData the BLHO v2 data structure containing block and image information
+     * @throws IOException if an error occurs while writing data to the stream
      */
     private void writeMetadata(DataOutputStream dos, BlhoFileDataV2 fileData) throws IOException {
         Map<String, Object> metadata = new HashMap<>();
@@ -196,12 +201,21 @@ public class BlhoWriter {
         String json = objectMapper.writeValueAsString(metadata);
         byte[] jsonBytes = json.getBytes(StandardCharsets.UTF_8);
 
-        // 4 bytes metadata_length
         dos.writeInt(jsonBytes.length);
-        // N bytes metadata_json
         dos.write(jsonBytes);
     }
 
+    /**
+     * Writes a list of SHA-256 hashes to the .blho file in binary format.<br>
+     * Each hash must be exactly 32 bytes.<br>
+     * The method first writes the number of hashes as a 4-byte integer,
+     * followed by each 32-byte hash in the order they appear in the list.<br>
+     *
+     * @param dos    the output stream to write the binary .blho data
+     * @param hashes the list of SHA-256 hashes to write
+     * @throws IOException           if an error occurs while writing to the stream
+     * @throws IllegalStateException if any hash does not have exactly 32 bytes
+     */
     private void writeHashList(DataOutputStream dos, List<byte[]> hashes)
             throws IOException {
 
@@ -214,6 +228,16 @@ public class BlhoWriter {
         }
     }
 
+    /**
+     * Writes a position map to the .blho file in binary format.<br>
+     * A position map stores the indices of blocks to reconstruct the original image layout.<br>
+     * The method first writes the number of entries as a 4-byte integer,
+     * followed by each index as a 4-byte integer in the order they appear in the list.<br>
+     *
+     * @param dos the output stream to write the binary .blho data
+     * @param map the list of block indices representing the position map
+     * @throws IOException if an error occurs while writing to the stream
+     */
     private void writePositionMap(DataOutputStream dos, List<Integer> map)
             throws IOException {
 
