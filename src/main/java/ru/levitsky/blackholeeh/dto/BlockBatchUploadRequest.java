@@ -4,10 +4,11 @@ import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
+import java.util.List;
+
 @Data
-@NoArgsConstructor
 @AllArgsConstructor
-public class BlockSaveRequest {
-    private String hash;
-    private byte[] data;
+@NoArgsConstructor
+public class BlockBatchUploadRequest {
+    private List<BlockDto> blocks;
 }

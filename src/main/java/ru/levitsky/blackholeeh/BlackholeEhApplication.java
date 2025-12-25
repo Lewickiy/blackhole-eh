@@ -12,7 +12,7 @@ import ru.levitsky.blackholeeh.service.FileProcessor;
 @Slf4j
 public class BlackholeEhApplication implements CommandLineRunner {
 
-private final FileProcessor fileProcessor;
+    private final FileProcessor fileProcessor;
 
     static void main(String[] args) {
         SpringApplication.run(BlackholeEhApplication.class, args);
@@ -23,7 +23,6 @@ private final FileProcessor fileProcessor;
         String directory = args.length > 0 ? args[0] : "target/classes/img";
         log.info("Processing directory: {}", directory);
         fileProcessor.processDirectory(directory);
-        log.info(" Done");
+        log.info("Done");
     }
-
 }
