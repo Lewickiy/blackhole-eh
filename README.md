@@ -140,3 +140,11 @@ This project is intended for:
 * Developers interested in alternative image representations
 
 It is **not** intended as a drop-in replacement for existing image codecs.
+
+## License
+This project is proprietary and provided for research and review purposes only.
+
+© 2025 Anatoliy Levitsky. All rights reserved.
+
+Any use, reproduction, modification, or distribution of this software
+without explicit written permission from the author is prohibited.
