@@ -1,7 +1,12 @@
 package ru.levitsky;
 
+import ru.levitsky.delta.DeltaAnalyzer;
+
 public class AnalysisRunner {
     public static void main(String[] args) {
-        System.out.println("Analysis Runner is executing...");
+
+        DeltaAnalyzer deltaAnalyzer = new DeltaAnalyzer();
+        deltaAnalyzer.run();
+
     }
 }
