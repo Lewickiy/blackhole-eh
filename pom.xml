@@ -11,8 +11,8 @@
     <packaging>pom</packaging>
 
     <modules>
-        <module>core</module>
         <module>analysis</module>
+        <module>core</module>
     </modules>
 
     <properties>

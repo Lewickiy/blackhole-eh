@@ -20,7 +20,7 @@ public class BlackholeEhApplication implements CommandLineRunner {
 
     @Override
     public void run(String... args) throws Exception {
-        String directory = args.length > 0 ? args[0] : "target/classes/img";
+        String directory = args.length > 0 ? args[0] : "core/target/classes/img";
         log.info("Processing directory: {}", directory);
         fileProcessor.processDirectory(directory);
         log.info("Done");
